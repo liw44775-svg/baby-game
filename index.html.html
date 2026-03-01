@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>宝宝双语乐园</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        body { touch-action: none; overflow: hidden; background: #e0f2fe; }
+        canvas { display: block; }
+    </style>
+</head>
+<body class="h-screen flex flex-col select-none">
+
+    <div id="start-screen" class="absolute inset-0 bg-black/60 z-50 flex flex-col justify-center items-center text-white p-10 text-center cursor-pointer">
+        <i class="fas fa-play-circle text-8xl mb-5 animate-pulse"></i>
+        <h1 class="text-4xl font-bold mb-3">点击屏幕开始</h1>
+        <p class="text-xl">双语大冒险</p>
+    </div>
+
+    <div class="absolute top-0 left-0 w-full p-4 flex justify-between items-start z-10 pointer-events-none">
+        <div class="space-y-2">
+            <div id="level-tag" class="bg-yellow-400 text-white px-4 py-1 rounded-full shadow-lg text-lg font-bold border-2 border-white inline-block">
+                数字
+            </div>
+            <div class="bg-white/80 backdrop-blur px-3 py-1 rounded-full text-sm font-bold text-pink-500">
+                ⭐ 分数: <span id="score">0</span>
+            </div>
+        </div>
+    </div>
+
+    <div id="word-overlay" class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-center pointer-events-none z-20 opacity-0 transition-opacity duration-200">
+        <div id="text-cn" class="text-6xl font-black text-white drop-shadow-lg"></div>
+        <div id="text-en" class="text-4xl font-bold text-yellow-300 drop-shadow-lg italic"></div>
+    </div>
+
+    <canvas id="gameCanvas"></canvas>
+
+    <audio id="bgMusic" loop>
+        <source src="your-music-file.mp3" type="audio/mpeg">
+    </audio>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const scoreEl = document.getElementById('score');
+        const levelTag = document.getElementById('level-tag');
+        const overlay = document.getElementById('word-overlay');
+        const textCn = document.getElementById('text-cn');
+        const textEn = document.getElementById('text-en');
+        const startScreen = document.getElementById('start-screen');
+        const bgMusic = document.getElementById('bgMusic');
+
+        // 添加计时器显示
+        const timerEl = document.createElement('div');
+        timerEl.className = 'bg-white/80 backdrop-blur px-3 py-1 rounded-full text-sm font-bold text-blue-500';
+        timerEl.innerHTML = '⏱ 时间: <span id="time">60</span>';
+        document.querySelector('.absolute.top-0.left-0 .space-y-2').appendChild(timerEl);
+        const timeEl = document.getElementById('time');
+
+        bgMusic.volume = 0.2; // 低音量
+
+        // 添加游戏结束逻辑
+        let gameTime = 60; // 60秒游戏时间
+        let timer;
+
+        function startGameTimer() {
+            clearInterval(timer);
+            timer = setInterval(() => {
+                gameTime--;
+                timeEl.innerText = gameTime; // 更新计时器显示
+                if (gameTime <= 0) {
+                    endGame();
+                }
+            }, 1000);
+        }
+
+        function endGame() {
+            isGameRunning = false;
+            clearInterval(timer);
+
+            // 显示游戏结束界面
+            const gameOverScreen = document.createElement('div');
+            gameOverScreen.innerHTML = `
+                <div class="absolute inset-0 bg-black/80 z-50 flex flex-col justify-center items-center text-white p-10 text-center">
+                    <h1 class="text-5xl font-bold mb-4">游戏结束！</h1>
+                    <p class="text-2xl mb-2">最终分数: ${score}</p>
+                    <p class="text-xl mb-6">你真是太棒了！</p>
+                    <button id="restart-btn" class="bg-pink-500 hover:bg-pink-600 text-white px-8 py-3 rounded-full text-xl font-bold transition-all transform hover:scale-105">
+                        再玩一次
+                    </button>
+                </div>
+            `;
+            document.body.appendChild(gameOverScreen);
+
+            document.getElementById('restart-btn').addEventListener('click', () => {
+                gameOverScreen.remove();
+                restartGame();
+            });
+        }
+
+        function restartGame() {
+            score = 0;
+            scoreEl.innerText = score;
+            bubbles = [];
+            currentLevelIndex = 0;
+            levelTag.innerText = levels[currentLevelIndex].name;
+            gameTime = 60;
+            timeEl.innerText = gameTime;
+            isGameRunning = true;
+            startGameTimer();
+            animate();
+        }
+
+        let score = 0;
+        let bubbles = [];
+        let currentLevelIndex = 0;
+        let isGameRunning = false;
+
+        // 添加更多关卡数据
+        const levels = [
+            {
+                name: "数字",
+                isImg: false,
+                data: Array.from({length: 10}, (_, i) => ({
+                    icon: `${i}`, cn: `${i}`, en: `${i}`, color: `hsl(${i * 36}, 70%, 70%)`
+                }))
+            },
+            {
+                name: "字母",
+                isImg: false,
+                data: Array.from({length: 26}, (_, i) => {
+                    const char = String.fromCharCode(65 + i);
+                    return { icon: char, cn: `字母${char}`, en: char, color: `hsl(${i * 14}, 70%, 70%)` };
+                })
+            },
+            {
+                name: "动物",
+                isImg: true,
+                data: [
+                    { icon: '🐶', cn: '狗', en: 'Dog', color: '#e17055' },
+                    { icon: '🐱', cn: '猫', en: 'Cat', color: '#fab1a0' },
+                    { icon: '🐰', cn: '兔子', en: 'Rabbit', color: '#dfe6e9' },
+                    { icon: '🐻', cn: '熊', en: 'Bear', color: '#b2bec3' },
+                    { icon: '🐵', cn: '猴子', en: 'Monkey', color: '#e056fd' },
+                    { icon: '🐯', cn: '老虎', en: 'Tiger', color: '#f0932b' },
+                    { icon: '🦁', cn: '狮子', en: 'Lion', color: '#f39c12' },
+                    { icon: '🐘', cn: '大象', en: 'Elephant', color: '#74b9ff' },
+                    { icon: '🦒', cn: '长颈鹿', en: 'Giraffe', color: '#feca57' },
+                    { icon: '🐼', cn: '熊猫', en: 'Panda', color: '#b2bec3' },
+                    { icon: '🐦', cn: '小鸟', en: 'Bird', color: '#81ecec' },
+                    { icon: '🦆', cn: '鸭子', en: 'Duck', color: '#ffeaa7' },
+                    { icon: '🐔', cn: '小鸡', en: 'Chicken', color: '#f1c40f' },
+                    { icon: '🐠', cn: '鱼', en: 'Fish', color: '#3498db' },
+                    { icon: '🐸', cn: '青蛙', en: 'Frog', color: '#2ecc71' },
+                    { icon: '🐮', cn: '奶牛', en: 'Cow', color: '#dfe6e9' },
+                    { icon: '🐷', cn: '猪', en: 'Pig', color: '#ff7675' },
+                    { icon: '🐴', cn: '马', en: 'Horse', color: '#d35400' },
+                    { icon: '🐑', cn: '羊', en: 'Sheep', color: '#ecf0f1' },
+                    { icon: '🦋', cn: '蝴蝶', en: 'Butterfly', color: '#5f27cd' }
+                ]
+            },
+            {
+                name: "水果",
+                isImg: true,
+                data: [
+                    { icon: '🍎', cn: '苹果', en: 'Apple', color: '#ff6b6b' },
+                    { icon: '🍌', cn: '香蕉', en: 'Banana', color: '#ffe066' },
+                    { icon: '🍇', cn: '葡萄', en: 'Grape', color: '#9c88ff' },
+                    { icon: '🍓', cn: '草莓', en: 'Strawberry', color: '#ff7979' },
+                    { icon: '🍊', cn: '橙子', en: 'Orange', color: '#feca57' },
+                    { icon: '🍉', cn: '西瓜', en: 'Watermelon', color: '#55efc4' },
+                    { icon: '🍍', cn: '菠萝', en: 'Pineapple', color: '#f1c40f' },
+                    { icon: '🥝', cn: '猕猴桃', en: 'Kiwi', color: '#a3cb38' },
+                    { icon: '🥭', cn: '芒果', en: 'Mango', color: '#fdcb6e' },
+                    { icon: '🍒', cn: '樱桃', en: 'Cherry', color: '#e84393' }
+                ]
+            },
+            {
+                name: "形状",
+                isImg: false,
+                data: [
+                    { icon: '●', cn: '圆形', en: 'Circle', color: '#fd79a8' },
+                    { icon: '■', cn: '正方形', en: 'Square', color: '#74b9ff' },
+                    { icon: '▲', cn: '三角形', en: 'Triangle', color: '#55efc4' },
+                    { icon: '★', cn: '星星', en: 'Star', color: '#ffeaa7' },
+                    { icon: '♥', cn: '爱心', en: 'Heart', color: '#ff7675' },
+                    { icon: '◆', cn: '菱形', en: 'Diamond', color: '#a29bfe' },
+                    { icon: '○', cn: '椭圆形', en: 'Oval', color: '#81ecec' },
+                    { icon: '□', cn: '长方形', en: 'Rectangle', color: '#fab1a0' }
+                ]
+            },
+            {
+                name: "颜色",
+                isImg: false,
+                data: [
+                    { icon: '🔴', cn: '红色', en: 'Red', color: '#ff6b6b' },
+                    { icon: '🔵', cn: '蓝色', en: 'Blue', color: '#74b9ff' },
+                    { icon: '🟢', cn: '绿色', en: 'Green', color: '#55efc4' },
+                    { icon: '🟡', cn: '黄色', en: 'Yellow', color: '#ffe066' },
+                    { icon: '🟠', cn: '橙色', en: 'Orange', color: '#fdcb6e' },
+                    { icon: '🟣', cn: '紫色', en: 'Purple', color: '#9c88ff' },
+                    { icon: '⚫', cn: '黑色', en: 'Black', color: '#2d3436' },
+                    { icon: '⚪', cn: '白色', en: 'White', color: '#dfe6e9' }
+                ]
+            }
+        ];
+
+        // 预加载本地图片并处理不存在的错误
+        const imageMap = new Map();
+        function preloadImages() {
+            levels.forEach(level => {
+                if (level.isImg) {
+                    level.data.forEach(item => {
+                        // 对于emoji，直接使用文本渲染，不需要图片加载
+                        if (item.icon.length > 1 && !item.icon.includes('.')) { // 判断是emoji
+                            imageMap.set(item.icon, null); // emoji不需要图片对象
+                        } else {
+                            const img = new Image();
+                            img.src = item.icon;
+                            img.onerror = () => {
+                                console.warn("图片加载失败:", item.icon);
+                                imageMap.set(item.icon, null);
+                            };
+                            img.onload = () => {
+                                imageMap.set(item.icon, img);
+                            };
+                        }
+                    });
+                }
+            });
+        }
+        preloadImages();
+
+        // 只播放英文语音
+        function speakDual(cn, en) {
+            window.speechSynthesis.cancel(); // 取消所有正在播放的语音
+
+            const msgEn = new SpeechSynthesisUtterance(en);
+            msgEn.lang = 'en-US';
+            msgEn.rate = 0.8; // 原来的英文语速
+
+            window.speechSynthesis.speak(msgEn);
+        }
+
+        class Bubble {
+            constructor(levelObj) {
+                this.levelObj = levelObj;
+                this.item = levelObj.data[Math.floor(Math.random() * levelObj.data.length)];
+                this.size = Math.random() * 10 + 55; // 恢复原来的大小
+
+                // 确保气泡不会重叠生成
+                let validPosition = false;
+                let attempts = 0;
+                while (!validPosition && attempts < 50) {
+                    this.x = Math.random() * (canvas.width - this.size * 2) + this.size;
+                    this.y = canvas.height + this.size;
+
+                    // 检查与现有气泡的距离
+                    validPosition = true;
+                    for (let bubble of bubbles) {
+                        const dist = Math.hypot(this.x - bubble.x, this.y - bubble.y);
+                        if (dist < (this.size + bubble.size) * 1.5) { // 恢复原来的间距
+                            validPosition = false;
+                            break;
+                        }
+                    }
+                    attempts++;
+                }
+
+                this.speed = Math.random() * 1 + 0.5; // 恢复原来的速度
+                this.clicked = false; // 标记是否已被点击
+            }
+            update() { this.y -= this.speed; }
+            draw() {
+                ctx.save();
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fillStyle = this.item.color;
+                ctx.globalAlpha = 0.7;
+                ctx.fill();
+                ctx.globalAlpha = 1;
+
+                // 核心修复：检查图片是否成功加载
+                const img = imageMap.get(this.item.icon);
+                if (this.levelObj.isImg && img && img.complete && img.naturalWidth !== 0) {
+                    const imgSize = this.size * 1.3;
+                    ctx.drawImage(img, this.x - imgSize/2, this.y - imgSize/2, imgSize, imgSize);
+                } else {
+                    // 图片失败时显示 Fallback 文字或emoji
+                    ctx.fillStyle = "#FFF";
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    ctx.font = `bold ${this.size}px Arial`;
+                    ctx.fillText(this.item.icon, this.x, this.y);
+                }
+                ctx.restore();
+            }
+        }
+
+        // 改进关卡切换逻辑
+        function handlePop(x, y) {
+            if (!isGameRunning) return;
+
+            // 按从下到上的顺序检查气泡（先检查最上面的气泡）
+            for (let i = bubbles.length - 1; i >= 0; i--) {
+                let b = bubbles[i];
+                const dist = Math.hypot(b.x - x, b.y - y);
+                if (dist < b.size + 20 && !b.clicked) {
+                    b.clicked = true; // 标记为已点击
+                    bubbles.splice(i, 1);
+                    score++;
+                    scoreEl.innerText = score;
+                    textCn.innerText = b.item.cn;
+                    textEn.innerText = b.item.en;
+                    overlay.style.opacity = '1';
+                    setTimeout(() => overlay.style.opacity = '0', 600);
+
+                    // 只播放英文语音
+                    speakDual(b.item.cn, b.item.en);
+
+                    // 每5分切换一次关卡，循环所有关卡
+                    if (score % 5 === 0) {
+                        currentLevelIndex = (currentLevelIndex + 1) % levels.length;
+                        levelTag.innerText = levels[currentLevelIndex].name;
+                        // 不清空当前气泡，让它们自然消失
+                    }
+                    break; // 只处理一个气泡
+                }
+            }
+        }
+
+        window.addEventListener('touchstart', e => handlePop(e.touches[0].clientX, e.touches[0].clientY));
+        window.addEventListener('mousedown', e => handlePop(e.clientX, e.clientY));
+
+        function resize() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+
+        function animate() {
+            if (!isGameRunning) return;
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            if (bubbles.length < 5) { // 恢复原来的数量
+                // 生成新气泡时使用当前关卡
+                bubbles.push(new Bubble(levels[currentLevelIndex]));
+            }
+
+            for (let i = bubbles.length - 1; i >= 0; i--) {
+                let b = bubbles[i];
+                b.update();
+                b.draw();
+                if (b.y < -b.size * 2) {
+                    bubbles.splice(i, 1);
+                }
+            }
+            requestAnimationFrame(animate);
+        }
+
+        startScreen.addEventListener('click', () => {
+            if (isGameRunning) return;
+            startScreen.style.display = 'none';
+            isGameRunning = true;
+            resize();
+            startGameTimer(); // 启动计时器
+            animate();
+            bgMusic.play().catch(e => console.log("Music blocked"));
+        });
+
+        window.addEventListener('resize', resize);
+    </script>
+</body>
+</html>
